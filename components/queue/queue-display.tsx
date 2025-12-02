@@ -20,6 +20,7 @@ export function QueueDisplay({
 }: Props) {
   const { presenter, observers, total, loading } = useQueue(queueId);
   const lastPresenterRef = useRef<string | null>(null);
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
   const getSpokenClassLabel = (label?: string) => {
     if (!label || label.trim().length === 0) {
@@ -50,6 +51,47 @@ export function QueueDisplay({
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+
+    const selectVoice = () => {
+      const voices = synth.getVoices();
+      if (!voices || voices.length === 0) return;
+
+      const idVoices = voices.filter((v) =>
+        v.lang.toLowerCase().startsWith("id"),
+      );
+
+      const preferred =
+        idVoices.find((v) =>
+          /indonesia|indonesian|google.*id/i.test(
+            `${v.name} ${v.lang}`,
+          ),
+        ) ||
+        idVoices[0] ||
+        voices.find((v) => v.default) ||
+        voices[0] ||
+        null;
+
+      voiceRef.current = preferred;
+    };
+
+    selectVoice();
+
+    const handleVoicesChanged = () => {
+      selectVoice();
+    };
+
+    synth.addEventListener("voiceschanged", handleVoicesChanged);
+
+    return () => {
+      synth.removeEventListener("voiceschanged", handleVoicesChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("speechSynthesis" in window)) return;
     if (!presenter?.name) return;
 
     const currentName = presenter.name;
@@ -72,7 +114,15 @@ export function QueueDisplay({
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "id-ID";
+    if (voiceRef.current) {
+      utterance.voice = voiceRef.current;
+      utterance.lang = voiceRef.current.lang ?? "id-ID";
+    } else {
+      utterance.lang = "id-ID";
+    }
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }, [presenter?.name, observers, classLabel]);
