@@ -1,13 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, LogOut, RotateCcw, StepForward, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Lock,
+  LogOut,
+  RotateCcw,
+  SkipForward,
+  StepForward,
+  Unlock,
+  Users,
+} from "lucide-react";
 import Swal from "sweetalert2";
 import { signOut } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { useQueue, nextQueue, resetQueue } from "@/hooks/use-queue";
+import { useQueue, nextQueue, resetQueue, skipQueue, setQueueLocked } from "@/hooks/use-queue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,15 +34,50 @@ type Props = {
 };
 
 export function AdminQueueControls({ queueId, classLabel }: Props) {
-  const { presenter, observers, total, loading } = useQueue(queueId, {
+  const {
+    presenter,
+    nextPresenter,
+    observers,
+    total,
+    loading,
+    locked,
+    history,
+    statuses,
+    students,
+  } = useQueue(queueId, {
     initializeIfMissing: true,
   });
-  const [busy, setBusy] = useState<"next" | "reset" | null>(null);
+
+  const [busy, setBusy] = useState<"next" | "reset" | "skip" | null>(null);
+  const [locking, setLocking] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const currentStatus = useMemo(() => {
+    if (!presenter) return "belum";
+    const found = statuses.find((s) => s.studentId === presenter.id);
+    return found?.status ?? "belum";
+  }, [presenter, statuses]);
+
+  const currentStatusLabel = useMemo(() => {
+    if (currentStatus === "sudah") return "Sudah presentasi";
+    if (currentStatus === "tidak_hadir")
+      return "Tidak hadir / dilewati";
+    return "Belum presentasi";
+  }, [currentStatus]);
 
   const handleNext = async () => {
     try {
       setBusy("next");
       await nextQueue(queueId);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSkip = async () => {
+    try {
+      setBusy("skip");
+      await skipQueue(queueId);
     } finally {
       setBusy(null);
     }
@@ -77,11 +122,80 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
     await signOut(auth);
   };
 
+  const handleToggleLock = async () => {
+    try {
+      setLocking(true);
+      await setQueueLocked(queueId, !locked);
+    } finally {
+      setLocking(false);
+    }
+  };
+
+  const handleExportHistory = async () => {
+    if (!history.length) {
+      await Swal.fire({
+        title: "Tidak ada riwayat",
+        text: "Belum ada data riwayat presentasi untuk diexport.",
+        icon: "info",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+
+    try {
+      setExporting(true);
+      const header = ["No", "NIS", "Nama", "Status", "Waktu (lokal)"];
+
+      const rows = history.map((entry, index) => {
+        const student = students.find((s) => s.id === entry.studentId);
+        const nis = student?.id ?? entry.studentId;
+        const name = student?.name ?? "Tidak diketahui";
+        const status =
+          entry.status === "sudah"
+            ? "Sudah presentasi"
+            : entry.status === "tidak_hadir"
+              ? "Tidak hadir / dilewati"
+              : "Belum";
+        const time = new Date(entry.timestamp).toLocaleString("id-ID");
+
+        return [String(index + 1), nis, name, status, time];
+      });
+
+      const csvLines = [header, ...rows]
+        .map((cols) =>
+          cols
+            .map((value) => {
+              const safe = value.replace(/"/g, '""');
+              return `"${safe}"`;
+            })
+            .join(","),
+        )
+        .join("\n");
+
+      const blob = new Blob([csvLines], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `riwayat-${queueId}-${Date.now()}.csv`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
       <header className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900 sm:flex">
             <Users className="h-5 w-5" />
           </div>
           <div>
@@ -95,6 +209,12 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
               </span>{" "}
               setiap kali giliran presentasi diganti.
             </p>
+            {locked && (
+              <p className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+                <Lock className="mr-1 h-3 w-3" />
+                Mode kunci aktif
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -144,6 +264,22 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
 
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
+                Status
+              </p>
+              <p className="mt-1 text-sm">{currentStatusLabel}</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
+                Berikutnya
+              </p>
+              <p className="mt-1 text-sm">
+                {nextPresenter?.name ?? "Belum ada / sudah di akhir"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
                 Observasi
               </p>
               {loading ? (
@@ -166,8 +302,8 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
               )}
             </div>
           </CardContent>
-          <CardFooter className="justify-between text-xs text-zinc-500 dark:text-zinc-400">
-            <span>Total siswa: {total}</span>
+          <CardFooter className="flex-col items-start text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="text-left mb-2">Total siswa: <span className="font-black">{total}</span></span>
             <span>
               Antrian berputar otomatis kembali ke siswa pertama setelah siswa
               terakhir.
@@ -187,25 +323,70 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
               <Button
                 type="button"
                 onClick={handleNext}
-                disabled={loading || busy !== null}
+                disabled={loading || busy !== null || locked}
                 className="h-11 gap-2 text-base"
               >
                 <StepForward className="h-4 w-4" />
-                Next Giliran
+                {busy === "next" ? "Memproses..." : "Next Giliran"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSkip}
+                disabled={loading || busy !== null || locked}
+                className="h-11 gap-2 text-sm"
+              >
+                <SkipForward className="h-4 w-4" />
+                {busy === "skip" ? "Memproses..." : "Skip (Tidak Hadir)"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleReset}
-                disabled={busy !== null}
+                disabled={busy !== null || locked}
                 className="h-11 gap-2 text-sm"
               >
                 <RotateCcw className="h-4 w-4" />
-                Reset Antrian ke Awal
+                {busy === "reset"
+                  ? "Memproses..."
+                  : "Reset Antrian ke Awal"}
               </Button>
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col items-start gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <CardFooter className="flex flex-col gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={locked ? "outline" : "ghost"}
+                size="sm"
+                onClick={handleToggleLock}
+                disabled={locking}
+                className="gap-1 text-[11px]"
+              >
+                {locked ? (
+                  <>
+                    <Unlock className="h-3 w-3" />
+                    Buka Mode Kunci
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-3 w-3" />
+                    Aktifkan Mode Kunci
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportHistory}
+                disabled={exporting || history.length === 0}
+                className="gap-1 text-[11px]"
+              >
+                <Download className="h-3 w-3" />
+                {exporting ? "Export..." : "Export Riwayat (CSV)"}
+              </Button>
+            </div>
             <p>
               Pastikan halaman display antrian (halaman utama) dibuka di
               perangkat lain untuk menampilkan giliran ke siswa.
@@ -215,6 +396,84 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
               secara realtime melalui Firebase.
             </p>
           </CardFooter>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>Daftar Siswa & Status</CardTitle>
+            <CardDescription>
+              Ringkasan seluruh siswa di kelas {classLabel} beserta status
+              presentasi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {students.length === 0 ? (
+              <p className="text-xs text-zinc-500">
+                Belum ada data siswa untuk kelas ini.
+              </p>
+            ) : (
+              <div className="max-h-64 overflow-auto rounded-md border border-zinc-200 text-xs dark:border-zinc-800">
+                <table className="min-w-full border-collapse text-left">
+                  <thead className="bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                    <tr>
+                      <th className="px-3 py-2">No</th>
+                      <th className="px-3 py-2">NIS</th>
+                      <th className="px-3 py-2">Nama</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students
+                      .slice()
+                      .sort((a, b) => a.order - b.order)
+                      .map((student, index) => {
+                        const st = statuses.find(
+                          (s) => s.studentId === student.id,
+                        )?.status;
+
+                        let label = "Belum";
+                        let badgeClass =
+                          "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200";
+
+                        if (st === "sudah") {
+                          label = "Sudah presentasi";
+                          badgeClass =
+                            "inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
+                        } else if (st === "tidak_hadir") {
+                          label = "Tidak hadir / dilewati";
+                          badgeClass =
+                            "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+                        }
+
+                        return (
+                          <tr
+                            key={student.id}
+                            className={
+                              index % 2 === 0
+                                ? "border-t border-zinc-100 dark:border-zinc-800"
+                                : "border-t border-zinc-100 bg-zinc-50/40 dark:border-zinc-800 dark:bg-zinc-900/40"
+                            }
+                          >
+                            <td className="px-3 py-1.5 align-top">
+                              {student.order}
+                            </td>
+                            <td className="px-3 py-1.5 align-top">
+                              {student.id}
+                            </td>
+                            <td className="px-3 py-1.5 align-top">
+                              {student.name}
+                            </td>
+                            <td className="px-3 py-1.5 align-top">
+                              <span className={badgeClass}>{label}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
         </Card>
       </main>
     </div>

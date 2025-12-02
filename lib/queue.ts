@@ -6,6 +6,19 @@ export type Student = {
   observer2Name?: string;
 };
 
+export type PresentationStatus = "belum" | "sudah" | "tidak_hadir";
+
+export type StudentStatus = {
+  studentId: string;
+  status: PresentationStatus;
+};
+
+export type HistoryEntry = {
+  studentId: string;
+  status: PresentationStatus;
+  timestamp: number;
+};
+
 export type QueueId =
   | "x-rpl"
   | "xi-rpl"
@@ -18,6 +31,9 @@ export type QueueState = {
   students: Student[];
   currentIndex: number;
   updatedAt: number;
+  statuses?: StudentStatus[];
+  history?: HistoryEntry[];
+  locked?: boolean;
 };
 
 export const DEFAULT_QUEUE_ID: QueueId = "x-rpl";
