@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { Users, Volume2, VolumeX } from "lucide-react";
 import { useQueue } from "@/hooks/use-queue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,9 +18,12 @@ export function QueueDisplay({
   queueId,
   classLabel,
 }: Props) {
-  const { presenter, observers, total, loading } = useQueue(queueId);
+  const { presenter, nextPresenter, observers, nextObservers, total, loading } =
+    useQueue(queueId);
   const lastPresenterRef = useRef<string | null>(null);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [wibTime, setWibTime] = useState("");
 
   const getSpokenClassLabel = (label?: string) => {
     if (!label || label.trim().length === 0) {
@@ -47,6 +50,41 @@ export function QueueDisplay({
     }
     return `kelas ${levelWord}`;
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("queue-voice-enabled");
+      if (stored !== null) {
+        setVoiceEnabled(stored === "true");
+      }
+    } catch {
+      // abaikan jika localStorage tidak tersedia
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateTime = () => {
+      try {
+        const now = new Date();
+        const formatted = now.toLocaleTimeString("id-ID", {
+          timeZone: "Asia/Jakarta",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        setWibTime(formatted);
+      } catch {
+        // abaikan error format waktu
+      }
+    };
+
+    updateTime();
+    const id = window.setInterval(updateTime, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,6 +130,7 @@ export function QueueDisplay({
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("speechSynthesis" in window)) return;
+    if (!voiceEnabled) return;
     if (!presenter?.name) return;
 
     const currentName = presenter.name;
@@ -125,24 +164,60 @@ export function QueueDisplay({
 
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
-  }, [presenter?.name, observers, classLabel]);
+  }, [presenter?.name, observers, classLabel, voiceEnabled]);
+
+  const handleToggleVoice = () => {
+    setVoiceEnabled((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem("queue-voice-enabled", String(next));
+        } catch {
+          // abaikan error localStorage
+        }
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
       <header className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900 sm:flex">
             <Users className="h-5 w-5" />
           </div>
           <div>
             <h1 className="text-xl font-semibold sm:text-2xl">{title}</h1>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden text-right text-xs text-zinc-500 dark:text-zinc-400 sm:block">
+            <div className="hidden text-xs text-zinc-500 dark:text-zinc-400 sm:block">
             <p>Total siswa</p>
             <p className="text-base font-semibold">{total}</p>
           </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleVoice}
+            className="h-8 w-8"
+            aria-label={
+              voiceEnabled ? "Matikan suara pemanggilan" : "Nyalakan suara pemanggilan"
+            }
+          >
+            {voiceEnabled ? (
+              <Volume2 className="h-4 w-4" />
+            ) : (
+              <VolumeX className="h-4 w-4" />
+            )}
+          </Button>
+          
+          {wibTime && (
+            <div className="hidden text-right text-[11px] text-zinc-500 dark:text-zinc-400 sm:block">
+              <p className="font-mono font-bold text-4xl">{wibTime}</p>
+            </div>
+          )}
           <Link href="/">
             <Button
               type="button"
@@ -160,7 +235,7 @@ export function QueueDisplay({
         <Card className="flex flex-col justify-between">
           <CardHeader>
             <CardTitle className="text-zinc-500 dark:text-zinc-400">
-             Presentasi
+              Presentasi
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-8">
@@ -197,7 +272,7 @@ export function QueueDisplay({
             ) : (
               observers.map((observer, index) => (
                 <div
-                  key={`${observer.name}-${index}`}
+                  key={`${observer.id}-${index}`}
                   className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <span className="font-medium">{observer.name}</span>
@@ -210,6 +285,56 @@ export function QueueDisplay({
           </CardContent>
         </Card>
       </main>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-zinc-500 dark:text-zinc-400">
+              Sesi Berikutnya
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
+                Presentasi berikut
+              </p>
+              <p className="mt-1">
+                {loading
+                  ? "Mengambil data antrian..."
+                  : nextPresenter?.name ?? "Belum ada / sudah di akhir."}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
+                Observasi berikut
+              </p>
+              {loading ? (
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  Mengambil data antrian...
+                </p>
+              ) : nextObservers.length === 0 ? (
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  Belum ada siswa observasi berikut.
+                </p>
+              ) : (
+                <div className="mt-1 space-y-1">
+                  {nextObservers.map((observer, index) => (
+                    <div
+                      key={`${observer.id}-next-${index}`}
+                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <span>{observer.name}</span>
+                      <span className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        Observasi {index === 0 ? "1" : "2"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
