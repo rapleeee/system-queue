@@ -272,7 +272,25 @@ async function advanceQueue(
       },
     ];
 
-    const nextIndex = (data.currentIndex + 1) % total;
+    // Cari index berikutnya yang statusnya masih "belum".
+    const findNextIndex = () => {
+      const baseIndex = presenterIndex;
+      for (let step = 1; step <= total; step++) {
+        const candidate = (baseIndex + step) % total;
+        const student = students[candidate];
+        if (!student) continue;
+        const st =
+          statuses.find((s) => s.studentId === student.id)?.status ??
+          ("belum" as PresentationStatus);
+        if (st === "belum") {
+          return candidate;
+        }
+      }
+      // Jika semua sudah tidak "belum", tetap di presenter sekarang.
+      return presenterIndex;
+    };
+
+    const nextIndex = findNextIndex();
 
     transaction.update(ref, {
       currentIndex: nextIndex,
@@ -323,5 +341,56 @@ export async function setQueueLocked(
     locked,
     updatedAt: Date.now(),
     updatedAtServer: serverTimestamp(),
+  });
+}
+
+export async function setCurrentStudent(
+  queueId: string = DEFAULT_QUEUE_ID,
+  studentId: string,
+) {
+  const queues = collection(db, "queues");
+  const ref = doc(queues, queueId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+
+    const data = snap.data() as QueueState;
+    if (data.locked) return;
+
+    const students = data.students ?? [];
+    const index = students.findIndex((s) => s.id === studentId);
+    if (index === -1) return;
+
+    transaction.update(ref, {
+      currentIndex: index,
+      updatedAt: Date.now(),
+      updatedAtServer: serverTimestamp(),
+    });
+  });
+}
+
+export async function prevQueue(queueId: string = DEFAULT_QUEUE_ID) {
+  const queues = collection(db, "queues");
+  const ref = doc(queues, queueId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+
+    const data = snap.data() as QueueState;
+    const students = data.students ?? [];
+    const total = students.length;
+    if (!total) return;
+    if (data.locked) return;
+
+    const currentIndex = data.currentIndex ?? 0;
+    const prevIndex = ((currentIndex - 1) % total + total) % total;
+
+    transaction.update(ref, {
+      currentIndex: prevIndex,
+      updatedAt: Date.now(),
+      updatedAtServer: serverTimestamp(),
+    });
   });
 }

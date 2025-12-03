@@ -47,6 +47,38 @@ export const QUEUE_LABELS: Record<QueueId, string> = {
   "xi-dkv": "XI DKV",
 };
 
+export type QueueTheme = {
+  bg: string;
+  accent: string;
+};
+
+export const QUEUE_THEMES: Record<QueueId, QueueTheme> = {
+  "x-rpl": {
+    bg: "from-sky-50 to-sky-100",
+    accent: "bg-sky-600 text-white",
+  },
+  "xi-rpl": {
+    bg: "from-sky-50 to-sky-100",
+    accent: "bg-sky-600 text-white",
+  },
+  "x-tkj": {
+    bg: "from-emerald-50 to-emerald-100",
+    accent: "bg-emerald-600 text-white",
+  },
+  "xi-tkj": {
+    bg: "from-emerald-50 to-emerald-100",
+    accent: "bg-emerald-600 text-white",
+  },
+  "x-dkv": {
+    bg: "from-amber-50 to-amber-100",
+    accent: "bg-amber-500 text-white",
+  },
+  "xi-dkv": {
+    bg: "from-amber-50 to-amber-100",
+    accent: "bg-amber-500 text-white",
+  },
+};
+
 export const ALL_QUEUE_IDS: QueueId[] = [
   "x-rpl",
   "xi-rpl",
