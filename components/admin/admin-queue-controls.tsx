@@ -17,7 +17,15 @@ import Swal from "sweetalert2";
 import { signOut } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { useQueue, nextQueue, resetQueue, skipQueue, setQueueLocked } from "@/hooks/use-queue";
+import {
+  useQueue,
+  nextQueue,
+  resetQueue,
+  skipQueue,
+  setQueueLocked,
+  prevQueue,
+  setCurrentStudent,
+} from "@/hooks/use-queue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,6 +35,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type Props = {
   queueId: string;
@@ -51,6 +60,9 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
   const [busy, setBusy] = useState<"next" | "reset" | "skip" | null>(null);
   const [locking, setLocking] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "belum" | "sudah" | "tidak_hadir"
+  >("all");
 
   const currentStatus = useMemo(() => {
     if (!presenter) return "belum";
@@ -74,6 +86,15 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
     }
   };
 
+  const handlePrev = async () => {
+    try {
+      setBusy("next");
+      await prevQueue(queueId);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleSkip = async () => {
     try {
       setBusy("skip");
@@ -85,11 +106,11 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
 
   const handleReset = async () => {
     const result = await Swal.fire({
-      title: "Reset antrian?",
-      text: `Antrian kelas ${classLabel} akan dikembalikan ke awal.`,
+      title: "Mulai sesi baru?",
+      text: `Riwayat sesi ini akan diakhiri dan antrian kelas ${classLabel} dikembalikan ke awal.`,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Ya, reset",
+      confirmButtonText: "Ya, mulai sesi baru",
       cancelButtonText: "Batal",
       confirmButtonColor: "#ef4444",
     });
@@ -101,7 +122,7 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
       await resetQueue(queueId);
       await Swal.fire({
         title: "Berhasil",
-        text: `Antrian kelas ${classLabel} telah direset.`,
+        text: `Sesi baru untuk kelas ${classLabel} telah dimulai.`,
         icon: "success",
         confirmButtonText: "OK",
       });
@@ -190,6 +211,41 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
       setExporting(false);
     }
   };
+
+  const skippedStudents = useMemo(
+    () =>
+      students
+        .filter(
+          (student) =>
+            statuses.find((s) => s.studentId === student.id)?.status ===
+            "tidak_hadir",
+        )
+        .sort((a, b) => a.order - b.order),
+    [students, statuses],
+  );
+
+  const [selectedSkippedId, setSelectedSkippedId] = useState<string>("");
+
+  const handleCallSkipped = async () => {
+    if (!selectedSkippedId) return;
+    try {
+      setBusy("next");
+      await setCurrentStudent(queueId, selectedSkippedId);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const filteredStudents = useMemo(() => {
+    return students
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .filter((student) => {
+        if (statusFilter === "all") return true;
+        const st = statuses.find((s) => s.studentId === student.id)?.status;
+        return st === statusFilter;
+      });
+  }, [students, statuses, statusFilter]);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -320,15 +376,27 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePrev}
+                  disabled={loading || busy !== null || locked}
+                  className="h-11 gap-2 text-sm sm:flex-1"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  {busy === "next" ? "Memproses..." : "Sebelumnya"}
+                </Button>
               <Button
                 type="button"
                 onClick={handleNext}
                 disabled={loading || busy !== null || locked}
-                className="h-11 gap-2 text-base"
+                className="h-11 gap-2 text-base sm:flex-1"
               >
                 <StepForward className="h-4 w-4" />
                 {busy === "next" ? "Memproses..." : "Next Giliran"}
               </Button>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -387,6 +455,42 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
                 {exporting ? "Export..." : "Export Riwayat (CSV)"}
               </Button>
             </div>
+            <div className="mt-1 w-full space-y-1">
+              <p className="text-[11px] font-medium">
+                Panggil ulang siswa tidak hadir
+              </p>
+              {skippedStudents.length === 0 ? (
+                <p className="text-[11px] text-zinc-500">
+                  Tidak ada siswa dengan status "Tidak hadir / dilewati".
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1 sm:flex-row">
+                  <select
+                    className="h-8 flex-1 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                    value={selectedSkippedId}
+                    onChange={(e) => setSelectedSkippedId(e.target.value)}
+                  >
+                    <option value="">Pilih siswa...</option>
+                    {skippedStudents.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.order}. {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!selectedSkippedId || locked || busy !== null}
+                    onClick={handleCallSkipped}
+                    className="mt-1 gap-1 text-[11px] sm:mt-0"
+                  >
+                    <SkipForward className="h-3 w-3" />
+                    Panggil
+                  </Button>
+                </div>
+              )}
+            </div>
             <p>
               Pastikan halaman display antrian (halaman utama) dibuka di
               perangkat lain untuk menampilkan giliran ke siswa.
@@ -407,6 +511,59 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-600 dark:text-zinc-400">
+              <span>Filter status:</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-full px-2 py-1",
+                    statusFilter === "all"
+                      ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+                  )}
+                  onClick={() => setStatusFilter("all")}
+                >
+                  Semua
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-full px-2 py-1",
+                    statusFilter === "belum"
+                      ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+                  )}
+                  onClick={() => setStatusFilter("belum")}
+                >
+                  Belum
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-full px-2 py-1",
+                    statusFilter === "sudah"
+                      ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+                  )}
+                  onClick={() => setStatusFilter("sudah")}
+                >
+                  Sudah
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-full px-2 py-1",
+                    statusFilter === "tidak_hadir"
+                      ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+                  )}
+                  onClick={() => setStatusFilter("tidak_hadir")}
+                >
+                  Tidak hadir
+                </button>
+              </div>
+            </div>
             {students.length === 0 ? (
               <p className="text-xs text-zinc-500">
                 Belum ada data siswa untuk kelas ini.
@@ -423,10 +580,7 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {students
-                      .slice()
-                      .sort((a, b) => a.order - b.order)
-                      .map((student, index) => {
+                    {filteredStudents.map((student, index) => {
                         const st = statuses.find(
                           (s) => s.studentId === student.id,
                         )?.status;

@@ -6,17 +6,20 @@ import { Users, Volume2, VolumeX } from "lucide-react";
 import { useQueue } from "@/hooks/use-queue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type Props = {
   title?: string;
   queueId: string;
   classLabel?: string;
+  accentClass?: string;
 };
 
 export function QueueDisplay({
   title = "Sistem Antrian Presentasi",
   queueId,
   classLabel,
+  accentClass,
 }: Props) {
   const { presenter, nextPresenter, observers, nextObservers, total, loading } =
     useQueue(queueId);
@@ -184,7 +187,13 @@ export function QueueDisplay({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
       <header className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900 sm:flex">
+          <div
+            className={cn(
+              "hidden h-10 w-10 items-center justify-center rounded-full sm:flex",
+              "bg-zinc-900 text-zinc-50",
+              accentClass,
+            )}
+          >
             <Users className="h-5 w-5" />
           </div>
           <div>
