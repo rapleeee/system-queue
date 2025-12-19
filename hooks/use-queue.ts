@@ -244,11 +244,20 @@ async function advanceQueue(
       return;
     }
 
-    const presenterIndex = getPresenterIndex(
+    // Jika dalam blank state (-1), mulai dari siswa pertama
+    let presenterIndex = getPresenterIndex(
       data.currentIndex,
       students.length,
     );
-    if (presenterIndex === null) return;
+    
+    const isBlankState = data.currentIndex === -1;
+
+    if (presenterIndex === null && isBlankState) {
+      // Blank state - mulai dari siswa pertama
+      presenterIndex = 0;
+    } else if (presenterIndex === null) {
+      return;
+    }
 
     const presenter = students[presenterIndex];
     if (!presenter) return;
@@ -275,25 +284,31 @@ async function advanceQueue(
       },
     ];
 
-    // Cari index berikutnya yang statusnya masih "belum".
-    const findNextIndex = () => {
-      const baseIndex = presenterIndex;
-      for (let step = 1; step <= total; step++) {
-        const candidate = (baseIndex + step) % total;
-        const student = students[candidate];
-        if (!student) continue;
-        const st =
-          statuses.find((s) => s.studentId === student.id)?.status ??
-          ("belum" as PresentationStatus);
-        if (st === "belum") {
-          return candidate;
+    // Jika dari blank state, hanya set currentIndex = presenterIndex (0)
+    // Jangan cari next dulu, biarkan siswa pertama dipresentasikan dulu
+    let nextIndex: number;
+    if (isBlankState) {
+      nextIndex = presenterIndex;
+    } else {
+      // Cari index berikutnya yang statusnya masih "belum".
+      const findNextIndex = () => {
+        const baseIndex = presenterIndex;
+        for (let step = 1; step <= total; step++) {
+          const candidate = (baseIndex + step) % total;
+          const student = students[candidate];
+          if (!student) continue;
+          const st =
+            statuses.find((s) => s.studentId === student.id)?.status ??
+            ("belum" as PresentationStatus);
+          if (st === "belum") {
+            return candidate;
+          }
         }
-      }
-      // Jika semua sudah tidak "belum", tetap di presenter sekarang.
-      return presenterIndex;
-    };
-
-    const nextIndex = findNextIndex();
+        // Jika semua sudah tidak "belum", tetap di presenter sekarang.
+        return presenterIndex;
+      };
+      nextIndex = findNextIndex();
+    }
 
     transaction.update(ref, {
       currentIndex: nextIndex,
