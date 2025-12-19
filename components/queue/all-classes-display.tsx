@@ -65,13 +65,14 @@ const animationStyles = `
 `;
 
 export function AllClassesDisplay() {
-  const { voiceEnabled, toggleVoice, addToQueue } = useVoiceQueue();
+  const { voiceEnabled, toggleVoice, addToQueue, isSpeaking } = useVoiceQueue();
   const [wibTime, setWibTime] = useState("");
   const [videoIndex, setVideoIndex] = useState(0);
   const [mainPresentation, setMainPresentation] = useState<{
     queueId: QueueId;
     name: string;
   } | null>(null);
+  const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Track presenters for all queues to detect changes and trigger announcements
   const presenterTrackingRef = useRef<Record<QueueId, string | null>>(
@@ -87,7 +88,17 @@ export function AllClassesDisplay() {
   ) as Record<QueueId, ReturnType<typeof useQueue>>;
 
   // YouTube video IDs
-  const youtubeVideos = ["FSKfFteq5BQ", "j-dVc0sDRRU", "6Bxn8gBtURM"];
+  const youtubeVideos = [
+    "FSKfFteq5BQ",
+    "j-dVc0sDRRU",
+    "6Bxn8gBtURM",
+    "YhFeTSnYZdw",
+    "q3nlHJ7KD_s",
+    "XJlO-UpmviI",
+    "IQyQ7cWr2dY",
+    "So-dCVMGH-Y",
+    "d-UXo-hv4qI",
+  ];
 
   // Auto-advance video every 45 seconds
   useEffect(() => {
@@ -127,7 +138,8 @@ export function AllClassesDisplay() {
         const classLabel = QUEUE_LABELS[queueId];
         const roomName = QUEUE_ROOMS[queueId];
         const spokenClass = getSpokenClassLabel(classLabel);
-        const text = `Perhatian, ${spokenClass}. Yang akan presentasi: ${currentPresenterName}. Masuk ke ${roomName}.`;
+        const spokenRoom = getSpokenRoomName(roomName);
+        const text = `Perhatian, ${spokenClass}. Yang akan presentasi: ${currentPresenterName}. Masuk ke ${spokenRoom}.`;
 
         addToQueue({
           id: `${queueId}-${currentPresenterName}`,
@@ -146,6 +158,31 @@ export function AllClassesDisplay() {
       }
     });
   }, [queueData, addToQueue, mainPresentation?.queueId]);
+
+  // Volume ducking - reduce YouTube volume when speaking, restore when done
+  useEffect(() => {
+    const iframe = youtubeIframeRef.current;
+    if (!iframe) return;
+
+    // Control YouTube volume via postMessage API
+    const setYoutubeVolume = (volume: number) => {
+      iframe.contentWindow?.postMessage(
+        { event: "command", func: "setVolume", args: [volume] },
+        "*"
+      );
+    };
+
+    // When speaking, reduce to 0 (mute); when done, restore to 25
+    if (isSpeaking) {
+      setYoutubeVolume(0);
+    } else {
+      // Restore volume with a small delay to ensure clean transition
+      const timer = setTimeout(() => {
+        setYoutubeVolume(25);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isSpeaking]);
 
   // Update time
   useEffect(() => {
@@ -172,19 +209,24 @@ export function AllClassesDisplay() {
   }, []);
 
   const getSpokenClassLabel = (label: string) => {
-    // Handle labels like "X1", "XI 1", "X2", "XI 2", "X 3"
-    const cleanLabel = label.trim();
+    // Handle labels like "X1", "XI 1", "X2", "XI 2", "X 3", "XII TKJ"
+    const cleanLabel = label.trim().toUpperCase();
 
     let levelWord = "";
     let numberPart = "";
 
+    // Check if starts with XII (dua belas)
+    if (cleanLabel.startsWith("XII")) {
+      levelWord = "dua belas";
+      numberPart = cleanLabel.slice(3).trim();
+    }
     // Check if starts with XI (sebelas)
-    if (cleanLabel.toUpperCase().startsWith("XI")) {
+    else if (cleanLabel.startsWith("XI")) {
       levelWord = "sebelas";
       numberPart = cleanLabel.slice(2).trim();
     }
     // Check if starts with X (sepuluh)
-    else if (cleanLabel.toUpperCase().startsWith("X")) {
+    else if (cleanLabel.startsWith("X")) {
       levelWord = "sepuluh";
       numberPart = cleanLabel.slice(1).trim();
     }
@@ -193,10 +235,84 @@ export function AllClassesDisplay() {
       return `kelas ${cleanLabel.toLowerCase()}`;
     }
 
-    if (numberPart) {
-      return `kelas ${levelWord} ${numberPart}`;
+    // Convert number abbreviations to Indonesian words
+    const numberMap: Record<string, string> = {
+      "1": "satu",
+      "2": "dua",
+      "3": "tiga",
+      "4": "empat",
+      "5": "lima",
+      "RPL": "R P L",
+      "TKJ": "T K J",
+      "DKV": "D K V",
+    };
+
+    // Process number part - convert digits and abbreviations
+    const processedNumberPart = numberPart
+      .split(" ")
+      .map((part) => numberMap[part] || part.toLowerCase())
+      .join(" ");
+
+    if (processedNumberPart) {
+      return `kelas ${levelWord} ${processedNumberPart}`;
     }
     return `kelas ${levelWord}`;
+  };
+
+  const getSpokenRoomName = (roomName: string) => {
+    // Handle room names like "XII TKJ", "Ruang X1", "RUANG X 2"
+    const cleanLabel = roomName.trim().toUpperCase();
+
+    let levelWord = "";
+    let numberPart = "";
+
+    // Check if starts with XII (dua belas)
+    if (cleanLabel.startsWith("XII")) {
+      levelWord = "dua belas";
+      numberPart = cleanLabel.slice(3).trim();
+    }
+    // Check if starts with XI (sebelas)
+    else if (
+      cleanLabel.includes(" XI ") ||
+      cleanLabel.includes(" XI") ||
+      cleanLabel.startsWith("XI ")
+    ) {
+      levelWord = "sebelas";
+      numberPart = cleanLabel.replace(/XI\s*/i, "").trim();
+    }
+    // Check if contains X (sepuluh)
+    else if (cleanLabel.includes(" X ") || cleanLabel.includes(" X")) {
+      levelWord = "sepuluh";
+      numberPart = cleanLabel.replace(/RUANG\s*/i, "").replace(/X\s*/i, "").trim();
+    }
+    // If it's a standalone room name without class prefix
+    else {
+      return roomName;
+    }
+
+    // Convert number abbreviations to Indonesian words
+    const numberMap: Record<string, string> = {
+      "1": "satu",
+      "2": "dua",
+      "3": "tiga",
+      "4": "empat",
+      "5": "lima",
+      "RPL": "R P L",
+      "TKJ": "T K J",
+      "DKV": "D K V",
+    };
+
+    // Process number part - convert digits and abbreviations
+    const processedNumberPart = numberPart
+      .split(/\s+/)
+      .filter((part) => part.length > 0)
+      .map((part) => numberMap[part] || part.toLowerCase())
+      .join(" ");
+
+    if (processedNumberPart) {
+      return `${levelWord} ${processedNumberPart}`;
+    }
+    return levelWord;
   };
 
   return (
@@ -254,15 +370,15 @@ export function AllClassesDisplay() {
 
                         <div className="space-y-2 w-full">
                           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 md:gap-6">
-                          <p className="text-3xl sm:text-4xl md:text-5xl font-bold text-black">
-                            {QUEUE_LABELS[mainPresentation.queueId]}
-                          </p>
-                          <span className="text-xl sm:text-2xl text-gray-400">
-                            <ArrowRight className="h-4 sm:h-6 w-4 sm:w-6" />
-                          </span>
-                          <p className="text-2xl sm:text-4xl md:text-5xl font-bold text-blue-600">
-                            {QUEUE_ROOMS[mainPresentation.queueId]}
-                          </p>
+                            <p className="text-3xl sm:text-4xl md:text-5xl font-bold text-black">
+                              {QUEUE_LABELS[mainPresentation.queueId]}
+                            </p>
+                            <span className="text-xl sm:text-2xl text-gray-400">
+                              <ArrowRight className="h-4 sm:h-6 w-4 sm:w-6" />
+                            </span>
+                            <p className="text-2xl sm:text-4xl md:text-5xl font-bold text-blue-600">
+                              {QUEUE_ROOMS[mainPresentation.queueId]}
+                            </p>
                           </div>
                         </div>
 
@@ -297,12 +413,25 @@ export function AllClassesDisplay() {
                     <h2 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide">
                       Status Semua Kelas
                     </h2>
-
                   </div>
-                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {ALL_QUEUE_IDS.map((queueId) => (
-                      <ClassCardSmall key={queueId} queueId={queueId} />
-                    ))}
+                  <div className="space-y-6">
+                    {/* Kelas X */}
+                    <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {ALL_QUEUE_IDS.filter((id) => id.startsWith("x-")).map(
+                        (queueId) => (
+                          <ClassCardSmall key={queueId} queueId={queueId} />
+                        )
+                      )}
+                    </div>
+
+                    {/* Kelas XI */}
+                    <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {ALL_QUEUE_IDS.filter((id) => id.startsWith("xi-")).map(
+                        (queueId) => (
+                          <ClassCardSmall key={queueId} queueId={queueId} />
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -314,9 +443,10 @@ export function AllClassesDisplay() {
                     {/* YouTube Embed - Fullscreen */}
                     <div className="w-full h-full">
                       <iframe
+                        ref={youtubeIframeRef}
                         width="100%"
                         height="100%"
-                        src={`https://www.youtube.com/embed/${youtubeVideos[videoIndex]}?autoplay=1&mute=1&fs=1&controls=1&modestbranding=1`}
+                        src={`https://www.youtube.com/embed/${youtubeVideos[videoIndex]}?autoplay=1&mute=0&fs=1&controls=1&modestbranding=1&enablejsapi=1`}
                         title={`YouTube Video ${videoIndex + 1}`}
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -401,16 +531,18 @@ function ClassCardSmall({ queueId }: { queueId: QueueId }) {
     >
       <CardHeader className="pb-2 px-3 sm:px-4 py-2 sm:py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-          <CardTitle className="text-sm sm:text-base font-semibold text-gray-900">
-            {QUEUE_LABELS[queueId]}
-          </CardTitle>
-          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-            <span className="text-gray-400">
-              <ArrowRight className="h-3 sm:h-4 w-3 sm:w-4" />
-            </span>
-            <span className="text-blue-600 font-semibold whitespace-nowrap">
-              {QUEUE_ROOMS[queueId]}
-            </span>
+          <div className="px-4 w-full rounded-md bg-gray-300 flex flex-row items-center justify-start gap-2">
+            <CardTitle className="text-sm sm:text-base font-semibold text-gray-900">
+              {QUEUE_LABELS[queueId]}
+            </CardTitle>
+            <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
+              <span className="text-gray-400">
+                <ArrowRight className="h-3 sm:h-4 w-3 sm:w-4" />
+              </span>
+              <span className="text-blue-800 font-semibold text-sm sm:text-base ">
+                {QUEUE_ROOMS[queueId]}
+              </span>
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -423,8 +555,7 @@ function ClassCardSmall({ queueId }: { queueId: QueueId }) {
           </p>
         ) : (
           <p className="text-xs sm:text-sm text-gray-500">
-            Kelola antrian presentasi kelas {QUEUE_LABELS[queueId]} (Next,
-            Reset, dan ringkasan giliran).
+            Menunggu Panggilan Peserta kelas {QUEUE_LABELS[queueId]}
           </p>
         )}
       </CardContent>

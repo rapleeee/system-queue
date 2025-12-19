@@ -156,5 +156,6 @@ export function useVoiceQueue() {
     toggleVoice,
     addToQueue,
     clearQueue,
+    isSpeaking: isSpeakingRef.current,
   };
 }

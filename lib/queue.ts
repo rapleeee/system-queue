@@ -81,9 +81,9 @@ export const QUEUE_THEMES: Record<QueueId, QueueTheme> = {
 
 export const QUEUE_ROOMS: Record<QueueId, string> = {
   "x-rpl": "Ruang X1",
-  "xi-rpl": "Aula Kiri",
+  "xi-rpl": "Aula 1",
   "x-tkj": "XII TKJ",
-  "xi-tkj": "Aula Kanan",
+  "xi-tkj": "Aula 2",
   "x-dkv": "RUANG X 2",
   "xi-dkv": "Magnavox",
 };
