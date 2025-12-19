@@ -35,6 +35,7 @@ export type QueueView = {
   history: HistoryEntry[];
   statuses: StudentStatus[];
   students: { id: string; name: string; order: number }[];
+  updatedAt: number;
 };
 
 export type UseQueueOptions = {
@@ -63,6 +64,7 @@ export function useQueue(
     history: [],
     statuses: [],
     students: [],
+    updatedAt: 0,
   });
 
   useEffect(() => {
@@ -161,6 +163,7 @@ export function useQueue(
           history: data.history ?? [],
           statuses: data.statuses ?? [],
           students: simpleStudents,
+          updatedAt: data.updatedAt ?? 0,
         });
       },
       (error) => {
@@ -318,7 +321,7 @@ export async function resetQueue(queueId: string = DEFAULT_QUEUE_ID) {
 
   await setDoc(ref, {
     students,
-    currentIndex: 0,
+    currentIndex: -1,
     updatedAt: Date.now(),
     updatedAtServer: serverTimestamp(),
     statuses: students.map((s) => ({
@@ -364,6 +367,25 @@ export async function setCurrentStudent(
 
     transaction.update(ref, {
       currentIndex: index,
+      updatedAt: Date.now(),
+      updatedAtServer: serverTimestamp(),
+    });
+  });
+}
+
+export async function recallCurrentPresenter(queueId: string = DEFAULT_QUEUE_ID) {
+  const queues = collection(db, "queues");
+  const ref = doc(queues, queueId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+
+    const data = snap.data() as QueueState;
+    if (data.locked) return;
+
+    // Update only the timestamp to trigger re-announce without changing currentIndex
+    transaction.update(ref, {
       updatedAt: Date.now(),
       updatedAtServer: serverTimestamp(),
     });

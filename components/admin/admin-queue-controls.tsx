@@ -24,8 +24,10 @@ import {
   skipQueue,
   setQueueLocked,
   prevQueue,
+  recallCurrentPresenter,
   setCurrentStudent,
 } from "@/hooks/use-queue";
+import { QUEUE_ROOMS, type QueueId } from "@/lib/queue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -90,6 +92,27 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
     try {
       setBusy("next");
       await prevQueue(queueId);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRecall = async () => {
+    const result = await Swal.fire({
+      title: "Panggil Ulang Siswa?",
+      text: `Akan memanggil ulang siswa yang sedang presentasi untuk kesempatan presentasi berikutnya.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Panggil Ulang",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#3b82f6",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      setBusy("next");
+      await recallCurrentPresenter(queueId);
     } finally {
       setBusy(null);
     }
@@ -327,6 +350,15 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
 
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
+                Ruangan
+              </p>
+              <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">
+                {QUEUE_ROOMS[queueId as QueueId]}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
                 Berikutnya
               </p>
               <p className="mt-1 text-sm">
@@ -397,6 +429,16 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
                 {busy === "next" ? "Memproses..." : "Next Giliran"}
               </Button>
               </div>
+              <Button
+                type="button"
+                variant="default"
+                onClick={handleRecall}
+                disabled={loading || busy !== null || locked}
+                className="h-11 gap-2 text-sm bg-blue-600 hover:bg-blue-700"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {busy === "next" ? "Memproses..." : "Panggil Ulang"}
+              </Button>
               <Button
                 type="button"
                 variant="outline"
