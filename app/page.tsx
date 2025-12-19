@@ -1,42 +1,9 @@
-import Link from "next/link";
-
-import { ALL_QUEUE_IDS, QUEUE_LABELS } from "@/lib/queue";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AllClassesDisplay } from "@/components/queue/all-classes-display";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-linear-to-b from-zinc-50 to-zinc-100 text-zinc-950 dark:from-zinc-950 dark:to-zinc-900 dark:text-zinc-50">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-12 sm:px-6 lg:px-8">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold sm:text-3xl">
-            Sistem Antrian Presentasi
-          </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Pilih kelas untuk menampilkan layar antrian presentasi dan observasi.
-          </p>
-        </header>
-
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {ALL_QUEUE_IDS.map((id) => (
-            <Link key={id} href={`/kelas/${id}`}>
-              <Card className="h-full cursor-pointer border-zinc-200 bg-white transition-colors hover:border-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-100">
-                <CardHeader className="pb-3">
-                  <CardTitle>{QUEUE_LABELS[id]}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 text-sm text-zinc-600 dark:text-zinc-400">
-                  Klik untuk menampilkan antrian presentasi kelas{" "}
-                  {QUEUE_LABELS[id]} di layar siswa.
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </section>
-      </div>
+    <main className="min-h-screen">
+      <AllClassesDisplay />
     </main>
   );
 }

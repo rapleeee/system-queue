@@ -28,7 +28,7 @@ export default function ClassQueuePage({ params }: Props) {
   return (
     <div
       className={cn(
-        "min-h-screen bg-gradient-to-b text-zinc-950 dark:from-zinc-950 dark:to-zinc-900 dark:text-zinc-50",
+        "min-h-screen bg-linear-to-b text-zinc-950 dark:from-zinc-950 dark:to-zinc-900 dark:text-zinc-50",
         theme?.bg ?? "from-zinc-50 to-zinc-100",
       )}
     >
