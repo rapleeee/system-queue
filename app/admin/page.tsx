@@ -52,7 +52,12 @@ export default function AdminPage() {
         </header>
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {ALL_QUEUE_IDS.map((id) => (
+          {ALL_QUEUE_IDS.sort((a, b) => {
+            // Sort so XI comes first, then X
+            const aIsXI = a.startsWith("xi-") ? 0 : 1;
+            const bIsXI = b.startsWith("xi-") ? 0 : 1;
+            return aIsXI - bIsXI;
+          }).map((id) => (
             <Link key={id} href={`/admin/${id}`}>
               <Card className="h-full cursor-pointer border-zinc-200 bg-white transition-colors hover:border-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-100">
                 <CardHeader className="pb-3">
