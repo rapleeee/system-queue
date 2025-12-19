@@ -365,30 +365,6 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
                 {nextPresenter?.name ?? "Belum ada / sudah di akhir"}
               </p>
             </div>
-
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-500">
-                Observasi
-              </p>
-              {loading ? (
-                <p className="mt-1 text-sm text-zinc-500">Memuat...</p>
-              ) : observers.length === 0 ? (
-                <p className="mt-1 text-sm text-zinc-500">
-                  Belum ada siswa observasi.
-                </p>
-              ) : (
-                <ul className="mt-1 space-y-1 text-sm">
-                  {observers.map((observer, index) => (
-                    <li key={`${observer.name}-${index}`}>
-                      • {observer.name}{" "}
-                      <span className="text-xs text-zinc-500">
-                        (Observasi {index === 0 ? "1" : "2"})
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </CardContent>
           <CardFooter className="flex-col items-start text-xs text-zinc-500 dark:text-zinc-400">
             <span className="text-left mb-2">Total siswa: <span className="font-black">{total}</span></span>
