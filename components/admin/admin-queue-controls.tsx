@@ -98,9 +98,11 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
   };
 
   const handleRecall = async () => {
+    if (!presenter) return;
+
     const result = await Swal.fire({
       title: "Panggil Ulang Siswa?",
-      text: `Akan memanggil ulang siswa yang sedang presentasi untuk kesempatan presentasi berikutnya.`,
+      text: `Apakah kamu yakin akan memanggil ulang ${presenter.name}?`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Ya, Panggil Ulang",
@@ -112,6 +114,16 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
 
     try {
       setBusy("next");
+      
+      // Suara panggil ulang
+      const utterance = new SpeechSynthesisUtterance(
+        `Memanggil ulang ${presenter.name}`
+      );
+      utterance.lang = "id-ID";
+      utterance.rate = 1;
+      utterance.volume = 1;
+      window.speechSynthesis.speak(utterance);
+      
       await recallCurrentPresenter(queueId);
     } finally {
       setBusy(null);

@@ -775,63 +775,63 @@ export const INITIAL_STUDENTS_BY_QUEUE: Record<QueueId, Student[]> = {
       order: 10,
     },
     {
-      id: "242510031",
-      name: "JUNIOR FERNANDO",
+      id: "242510030",
+      name: "JASMINE AULIA PUTRI PRASETIYO",
       order: 11,
-    },
-    {
-      id: "242510028",
-      name: "HANIF IMAM MUTTAQIN",
-      order: 12,
-    },
-    {
-      id: "242510013",
-      name: "DENIZ RIZKI ATTILA",
-      order: 13,
-    },
-    {
-      id: "242510010",
-      name: "BIMASENA WIRYAATMAJA YUSUF",
-      order: 14,
-    },
-    {
-      id: "242510067",
-      name: "VEER SADZWAN AL AMUDI",
-      order: 15,
-    },
-    {
-      id: "242510056",
-      name: "RANGGA AZKA SUTRISNA",
-      order: 16,
-    },
-    {
-      id: "242510037",
-      name: "MUHAMAD FAJAR AL HADI",
-      order: 17,
-    },
-    {
-      id: "242510052",
-      name: "RAFIF HAZEL RAMIRO A.P.",
-      order: 18,
     },
     {
       id: "242510041",
       name: "MUHAMMAD RADITYA RIZKI PRATAMA",
+      order: 12,
+    },
+    {
+      id: "242510031",
+      name: "JUNIOR FERNANDO",
+      order: 13,
+    },
+    {
+      id: "242510028",
+      name: "HANIF IMAM MUTTAQIN",
+      order: 14,
+    },
+    {
+      id: "242510013",
+      name: "DENIZ RIZKI ATTILA",
+      order: 15,
+    },
+    {
+      id: "242510010",
+      name: "BIMASENA WIRYAATMAJA YUSUF",
+      order: 16,
+    },
+    {
+      id: "242510067",
+      name: "VEER SADZWAN AL AMUDI",
+      order: 17,
+    },
+    {
+      id: "242510056",
+      name: "RANGGA AZKA SUTRISNA",
+      order: 18,
+    },
+    {
+      id: "242510037",
+      name: "MUHAMAD FAJAR AL HADI",
       order: 19,
+    },
+    {
+      id: "242510052",
+      name: "RAFIF HAZEL RAMIRO A.P.",
+      order: 20,
     },
     {
       id: "242510011",
       name: "DAFFA ATHIYYAH KAMILA",
-      order: 20,
+      order: 21,
     },
     {
       id: "242510027",
       name: "HADI FAWWAZ SUDEWO",
-      order: 21,
-    },
-    {
-      id: "242510030",
-      name: "JASMINE AULIA PUTRI PRASETIYO",
       order: 22,
     },
   ],
