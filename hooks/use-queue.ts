@@ -431,3 +431,17 @@ export async function prevQueue(queueId: string = DEFAULT_QUEUE_ID) {
     });
   });
 }
+
+export async function reorderStudents(
+  queueId: string = DEFAULT_QUEUE_ID,
+  reorderedStudents: Array<{ id: string; name: string; order: number }>,
+) {
+  const queues = collection(db, "queues");
+  const ref = doc(queues, queueId);
+
+  await updateDoc(ref, {
+    students: reorderedStudents,
+    updatedAt: Date.now(),
+    updatedAtServer: serverTimestamp(),
+  });
+}

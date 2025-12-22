@@ -12,9 +12,27 @@ import {
   StepForward,
   Unlock,
   Users,
+  GripVertical,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { signOut } from "firebase/auth";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useSortable } from "@dnd-kit/sortable";
 
 import { auth } from "@/lib/firebase";
 import {
@@ -26,6 +44,7 @@ import {
   prevQueue,
   recallCurrentPresenter,
   setCurrentStudent,
+  reorderStudents,
 } from "@/hooks/use-queue";
 import { QUEUE_ROOMS, type QueueId } from "@/lib/queue";
 import { Button } from "@/components/ui/button";
@@ -43,6 +62,65 @@ type Props = {
   queueId: string;
   classLabel: string;
 };
+
+interface SortableRowProps {
+  student: { id: string; name: string; order: number };
+  index: number;
+  statuses: Array<{ studentId: string; status: string }>;
+  isDragging: boolean;
+}
+
+function SortableRow({ student, index, statuses, isDragging }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: student.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const st = statuses.find((s) => s.studentId === student.id)?.status;
+  let label = "Belum";
+  let badgeClass =
+    "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200";
+
+  if (st === "sudah") {
+    label = "Sudah presentasi";
+    badgeClass =
+      "inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
+  } else if (st === "tidak_hadir") {
+    label = "Tidak hadir / dilewati";
+    badgeClass =
+      "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+  }
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "border-t border-zinc-100 dark:border-zinc-800 transition-colors",
+        isDragging ? "bg-blue-50 dark:bg-blue-950" : index % 2 === 0 ? "" : "bg-zinc-50/40 dark:bg-zinc-900/40",
+      )}
+    >
+      <td className="px-3 py-1.5 align-top cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4 text-zinc-400" />
+      </td>
+      <td className="px-3 py-1.5 align-top">{student.order}</td>
+      <td className="px-3 py-1.5 align-top">{student.id}</td>
+      <td className="px-3 py-1.5 align-top">{student.name}</td>
+      <td className="px-3 py-1.5 align-top">
+        <span className={badgeClass}>{label}</span>
+      </td>
+    </tr>
+  );
+}
 
 export function AdminQueueControls({ queueId, classLabel }: Props) {
   const {
@@ -260,6 +338,30 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
   );
 
   const [selectedSkippedId, setSelectedSkippedId] = useState<string>("");
+  const [localStudents, setLocalStudents] = useState<
+    Array<{ id: string; name: string; order: number }>
+  >([]);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  // Update local students saat students dari hook berubah
+  const filteredStudents = useMemo(() => {
+    const current = localStudents.length > 0 ? localStudents : students;
+    return current
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .filter((student) => {
+        if (statusFilter === "all") return true;
+        const st = statuses.find((s) => s.studentId === student.id)?.status;
+        return st === statusFilter;
+      });
+  }, [students, statuses, statusFilter, localStudents]);
 
   const handleCallSkipped = async () => {
     if (!selectedSkippedId) return;
@@ -271,16 +373,41 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
     }
   };
 
-  const filteredStudents = useMemo(() => {
-    return students
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .filter((student) => {
-        if (statusFilter === "all") return true;
-        const st = statuses.find((s) => s.studentId === student.id)?.status;
-        return st === statusFilter;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setIsDragging(false);
+
+    if (!over || active.id === over.id) return;
+
+    const current = localStudents.length > 0 ? localStudents : students;
+    const oldIndex = current.findIndex((s) => s.id === active.id);
+    const newIndex = current.findIndex((s) => s.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newStudents = arrayMove(current, oldIndex, newIndex).map(
+      (student, index) => ({
+        ...student,
+        order: index + 1,
+      }),
+    );
+
+    setLocalStudents(newStudents);
+
+    // Save to Firebase
+    try {
+      await reorderStudents(queueId, newStudents);
+    } catch (error) {
+      console.error("[admin] gagal reorder siswa", error);
+      Swal.fire({
+        title: "Gagal menyimpan urutan",
+        text: "Terjadi kesalahan saat menyimpan urutan baru. Coba lagi.",
+        icon: "error",
+        confirmButtonText: "OK",
       });
-  }, [students, statuses, statusFilter]);
+      setLocalStudents([]);
+    }
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -536,8 +663,7 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
           <CardHeader>
             <CardTitle>Daftar Siswa & Status</CardTitle>
             <CardDescription>
-              Ringkasan seluruh siswa di kelas {classLabel} beserta status
-              presentasi.
+              Ringkasan seluruh siswa di kelas {classLabel} beserta status presentasi. Seret dan lepas untuk mengubah urutan.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -599,63 +725,42 @@ export function AdminQueueControls({ queueId, classLabel }: Props) {
                 Belum ada data siswa untuk kelas ini.
               </p>
             ) : (
-              <div className="max-h-64 overflow-auto rounded-md border border-zinc-200 text-xs dark:border-zinc-800">
-                <table className="min-w-full border-collapse text-left">
-                  <thead className="bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-                    <tr>
-                      <th className="px-3 py-2">No</th>
-                      <th className="px-3 py-2">NIS</th>
-                      <th className="px-3 py-2">Nama</th>
-                      <th className="px-3 py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.map((student, index) => {
-                        const st = statuses.find(
-                          (s) => s.studentId === student.id,
-                        )?.status;
-
-                        let label = "Belum";
-                        let badgeClass =
-                          "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200";
-
-                        if (st === "sudah") {
-                          label = "Sudah presentasi";
-                          badgeClass =
-                            "inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
-                        } else if (st === "tidak_hadir") {
-                          label = "Tidak hadir / dilewati";
-                          badgeClass =
-                            "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
-                        }
-
-                        return (
-                          <tr
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={() => setIsDragging(true)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="max-h-64 overflow-auto rounded-md border border-zinc-200 text-xs dark:border-zinc-800">
+                  <table className="min-w-full border-collapse text-left">
+                    <thead className="bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 w-8"></th>
+                        <th className="px-3 py-2">No</th>
+                        <th className="px-3 py-2">NIS</th>
+                        <th className="px-3 py-2">Nama</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <SortableContext
+                        items={filteredStudents.map((s) => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {filteredStudents.map((student, index) => (
+                          <SortableRow
                             key={student.id}
-                            className={
-                              index % 2 === 0
-                                ? "border-t border-zinc-100 dark:border-zinc-800"
-                                : "border-t border-zinc-100 bg-zinc-50/40 dark:border-zinc-800 dark:bg-zinc-900/40"
-                            }
-                          >
-                            <td className="px-3 py-1.5 align-top">
-                              {student.order}
-                            </td>
-                            <td className="px-3 py-1.5 align-top">
-                              {student.id}
-                            </td>
-                            <td className="px-3 py-1.5 align-top">
-                              {student.name}
-                            </td>
-                            <td className="px-3 py-1.5 align-top">
-                              <span className={badgeClass}>{label}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
+                            student={student}
+                            index={index}
+                            statuses={statuses}
+                            isDragging={isDragging}
+                          />
+                        ))}
+                      </SortableContext>
+                    </tbody>
+                  </table>
+                </div>
+              </DndContext>
             )}
           </CardContent>
         </Card>
